@@ -1,0 +1,26 @@
+version: 0.2
+
+# CodeBuild cho pipeline EC2: build site vào web/, kèm appspec.yml + scripts/
+# để CodeDeploy nhận bundle đúng cấu trúc.
+
+phases:
+  build:
+    commands:
+      - echo "Build (EC2 target) started on $(date)"
+      - COMMIT="${CODEBUILD_RESOLVED_SOURCE_VERSION:-local}"
+      - SHORT="${COMMIT:0:7}"
+      - STAMP="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+      - BUILD_INFO="${SHORT} @ ${STAMP}"
+      - mkdir -p web
+      - cp -r index.html assets web/
+      - sed -i "s|__BUILD_INFO__|${BUILD_INFO}|g" web/index.html
+  post_build:
+    commands:
+      - echo "Bundle contents:"
+      - ls -R web appspec.yml scripts
+
+artifacts:
+  files:
+    - appspec.yml
+    - scripts/**/*
+    - web/**/*

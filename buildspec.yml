@@ -1,0 +1,26 @@
+version: 0.2
+
+# CodeBuild: "build" cho static site — inject commit hash + timestamp vào trang
+# để chứng minh artifact đúng là bản vừa build, rồi gom vào dist/.
+
+phases:
+  build:
+    commands:
+      - echo "Build started on $(date)"
+      - COMMIT="${CODEBUILD_RESOLVED_SOURCE_VERSION:-local}"
+      - SHORT="${COMMIT:0:7}"
+      - STAMP="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+      - BUILD_INFO="${SHORT} @ ${STAMP}"
+      - echo "Injecting build info -> ${BUILD_INFO}"
+      - mkdir -p dist
+      - cp -r index.html assets dist/
+      - sed -i "s|__BUILD_INFO__|${BUILD_INFO}|g" dist/index.html
+  post_build:
+    commands:
+      - echo "Build completed. dist/ contents:"
+      - ls -R dist
+
+artifacts:
+  files:
+    - '**/*'
+  base-directory: dist
