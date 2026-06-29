@@ -19,8 +19,8 @@ phases:
       - BUILD_INFO="${SHORT} @ ${STAMP}"
       - mkdir -p web && cp -r index.html assets web/
       - sed -i "s|__BUILD_INFO__|${BUILD_INFO}|g" web/index.html
-      - echo "Sync site to s3://$BUCKET/site/"
-      - aws s3 sync web/ "s3://$BUCKET/site/" --delete --region "$REGION"
+      - echo "Upload site to s3://$BUCKET/site/"
+      - aws s3 cp web/ "s3://$BUCKET/site/" --recursive --region "$REGION"
   post_build:
     commands:
       - echo "Triggering SSM deploy on $INSTANCE_ID"
@@ -30,7 +30,7 @@ phases:
           --instance-ids "$INSTANCE_ID" \
           --document-name "AWS-RunShellScript" \
           --comment "portfolio deploy $SHORT" \
-          --parameters commands="[\"set -e\",\"command -v nginx >/dev/null 2>&1 || (export DEBIAN_FRONTEND=noninteractive && apt-get update -y && apt-get install -y nginx)\",\"mkdir -p /var/www/portfolio\",\"aws s3 sync s3://$BUCKET/site/ /var/www/portfolio/ --delete --region $REGION\",\"printf 'server {\\n  listen 80 default_server;\\n  root /var/www/portfolio;\\n  index index.html;\\n}\\n' > /etc/nginx/sites-available/portfolio\",\"ln -sf /etc/nginx/sites-available/portfolio /etc/nginx/sites-enabled/portfolio\",\"rm -f /etc/nginx/sites-enabled/default\",\"chown -R www-data:www-data /var/www/portfolio\",\"nginx -t\",\"systemctl enable nginx\",\"systemctl restart nginx\"]" \
+          --parameters commands="[\"set -e\",\"command -v nginx >/dev/null 2>&1 || (export DEBIAN_FRONTEND=noninteractive && apt-get update -y && apt-get install -y nginx)\",\"mkdir -p /var/www/portfolio\",\"aws s3 cp s3://$BUCKET/site/ /var/www/portfolio/ --recursive --region $REGION\",\"printf 'server {\\n  listen 80 default_server;\\n  root /var/www/portfolio;\\n  index index.html;\\n}\\n' > /etc/nginx/sites-available/portfolio\",\"ln -sf /etc/nginx/sites-available/portfolio /etc/nginx/sites-enabled/portfolio\",\"rm -f /etc/nginx/sites-enabled/default\",\"chown -R www-data:www-data /var/www/portfolio\",\"nginx -t\",\"systemctl enable nginx\",\"systemctl restart nginx\"]" \
           --query "Command.CommandId" --output text)
         echo "SSM CommandId=$CID"
         echo "Waiting for command to finish..."
