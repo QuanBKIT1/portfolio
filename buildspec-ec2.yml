@@ -30,7 +30,7 @@ phases:
           --instance-ids "$INSTANCE_ID" \
           --document-name "AWS-RunShellScript" \
           --comment "portfolio deploy $SHORT" \
-          --parameters commands="[\"set -e\",\"command -v nginx >/dev/null 2>&1 || (export DEBIAN_FRONTEND=noninteractive && apt-get update -y && apt-get install -y nginx)\",\"mkdir -p /var/www/portfolio\",\"aws s3 sync s3://$BUCKET/site/ /var/www/portfolio/ --delete --region $REGION\",\"printf 'server {\\n  listen 80 default_server;\\n  root /var/www/portfolio;\\n  index index.html;\\n  location / { try_files \\$uri \\$uri/ =404; }\\n}\\n' > /etc/nginx/sites-available/portfolio\",\"ln -sf /etc/nginx/sites-available/portfolio /etc/nginx/sites-enabled/portfolio\",\"rm -f /etc/nginx/sites-enabled/default\",\"chown -R www-data:www-data /var/www/portfolio\",\"nginx -t\",\"systemctl enable nginx\",\"systemctl restart nginx\"]" \
+          --parameters commands="[\"set -e\",\"command -v nginx >/dev/null 2>&1 || (export DEBIAN_FRONTEND=noninteractive && apt-get update -y && apt-get install -y nginx)\",\"mkdir -p /var/www/portfolio\",\"aws s3 sync s3://$BUCKET/site/ /var/www/portfolio/ --delete --region $REGION\",\"printf 'server {\\n  listen 80 default_server;\\n  root /var/www/portfolio;\\n  index index.html;\\n}\\n' > /etc/nginx/sites-available/portfolio\",\"ln -sf /etc/nginx/sites-available/portfolio /etc/nginx/sites-enabled/portfolio\",\"rm -f /etc/nginx/sites-enabled/default\",\"chown -R www-data:www-data /var/www/portfolio\",\"nginx -t\",\"systemctl enable nginx\",\"systemctl restart nginx\"]" \
           --query "Command.CommandId" --output text)
         echo "SSM CommandId=$CID"
         echo "Waiting for command to finish..."
