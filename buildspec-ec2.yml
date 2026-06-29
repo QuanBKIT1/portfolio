@@ -1,26 +1,49 @@
 version: 0.2
 
-# CodeBuild cho pipeline EC2: build site vào web/, kèm appspec.yml + scripts/
-# để CodeDeploy nhận bundle đúng cấu trúc.
+# Pipeline EC2 (fallback SSM — Free Plan chặn CodeDeploy):
+# build site -> sync lên S3 (Sydney) -> SSM send-command để EC2 kéo về + reload nginx.
+
+env:
+  variables:
+    REGION: ap-southeast-2
+    BUCKET: ducquan-portfolio-artifacts-syd
+    INSTANCE_ID: i-009a9e9e14aa0841b
 
 phases:
   build:
     commands:
-      - echo "Build (EC2 target) started on $(date)"
+      - echo "Build (EC2/SSM target) started on $(date)"
       - COMMIT="${CODEBUILD_RESOLVED_SOURCE_VERSION:-local}"
       - SHORT="${COMMIT:0:7}"
       - STAMP="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
       - BUILD_INFO="${SHORT} @ ${STAMP}"
-      - mkdir -p web
-      - cp -r index.html assets web/
+      - mkdir -p web && cp -r index.html assets web/
       - sed -i "s|__BUILD_INFO__|${BUILD_INFO}|g" web/index.html
+      - echo "Sync site to s3://$BUCKET/site/"
+      - aws s3 sync web/ "s3://$BUCKET/site/" --delete --region "$REGION"
   post_build:
     commands:
-      - echo "Bundle contents:"
-      - ls -R web appspec.yml scripts
+      - echo "Triggering SSM deploy on $INSTANCE_ID"
+      - |
+        CID=$(aws ssm send-command \
+          --region "$REGION" \
+          --instance-ids "$INSTANCE_ID" \
+          --document-name "AWS-RunShellScript" \
+          --comment "portfolio deploy $SHORT" \
+          --parameters commands="[\"set -e\",\"command -v nginx >/dev/null 2>&1 || (export DEBIAN_FRONTEND=noninteractive && apt-get update -y && apt-get install -y nginx)\",\"mkdir -p /var/www/portfolio\",\"aws s3 sync s3://$BUCKET/site/ /var/www/portfolio/ --delete --region $REGION\",\"printf 'server {\\n  listen 80 default_server;\\n  root /var/www/portfolio;\\n  index index.html;\\n  location / { try_files \\$uri \\$uri/ =404; }\\n}\\n' > /etc/nginx/sites-available/portfolio\",\"ln -sf /etc/nginx/sites-available/portfolio /etc/nginx/sites-enabled/portfolio\",\"rm -f /etc/nginx/sites-enabled/default\",\"chown -R www-data:www-data /var/www/portfolio\",\"nginx -t\",\"systemctl enable nginx\",\"systemctl restart nginx\"]" \
+          --query "Command.CommandId" --output text)
+        echo "SSM CommandId=$CID"
+        echo "Waiting for command to finish..."
+        for i in $(seq 1 40); do
+          ST=$(aws ssm get-command-invocation --region "$REGION" --command-id "$CID" --instance-id "$INSTANCE_ID" --query Status --output text 2>/dev/null || echo Pending)
+          echo "  status=$ST"
+          case "$ST" in
+            Success) echo "Deploy OK"; break;;
+            Failed|Cancelled|TimedOut) echo "Deploy FAILED"; aws ssm get-command-invocation --region "$REGION" --command-id "$CID" --instance-id "$INSTANCE_ID" --query StandardErrorContent --output text; exit 1;;
+          esac
+          sleep 5
+        done
 
 artifacts:
   files:
-    - appspec.yml
-    - scripts/**/*
     - web/**/*
